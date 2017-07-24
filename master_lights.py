@@ -1,10 +1,10 @@
 import my_appapi as appapi
-             
+
 class master_lights(appapi.my_appapi):
 
   def initialize(self):
     # self.LOGLEVEL="DEBUG"
-    self.log("bedroom_lights App")
+    self.log("master_lights App")
     if "targets" in self.args:
       self.targets=eval(self.args["targets"])
     else:
@@ -22,9 +22,9 @@ class master_lights(appapi.my_appapi):
     else:
       self.light_off=0
     if "fan_max" in self.args:
-      self.fan_max = self.args["fan_max"]
+      self.fan_high = self.args["fan_high"]
     else:
-      self.fan_max=254
+      self.fan_high=254
     if "fan_med" in self.args:
       self.fan_med = self.args["fan_med"]
     else:
@@ -68,31 +68,6 @@ class master_lights(appapi.my_appapi):
     else:
       self.low_humidity=59
 
-    #self.targets={"light.master_light_level":{"triggers":{"light.master_light_level":{"type":"light","bit":32,"onValue":"on"},
-    #                                                    "input_boolean.masterishome":{"type":"tracker","bit":1,"onValue":"on"},
-    #                                                    "media_player.mbr_directv":{"type":"media","bit":8,"onValue":"playing"},
-    #                                                    "input_boolean.mastermotion":{"type":"motion","bit":4,"onValue":2},
-    #                                                    "input_boolean.master_alarm_active":{"type":"sensor","bit":64,"onValue":"on"}},
-    #                                        "type":"light",
-    #                                        "onState":[41,42,43,45,46,47,57,58,59,100,104,106,108,110,112,116,120,122,124,126]+list(range(61,97)),
-    #                                        "dimState":[41,42,43,45,46,47,57,58,59,61,62,63,106,110,122,126],
-    #                                        "ignoreState":[1,2,3,5,6,7,9,10,11,13,14,15,17,18,19,21,22,23,25,26,27,29,30,31,33,34,35,
-    #                                                       37,38,39,49,50,51,53,54,55,97,98,99,101,102,103,105,107,109,111,113,114,115,117,118,119,121,123,125,127],
-    #                                        "callback":self.light_state_handler,
-    #                                        "overrides":["input_boolean.party_override"]},
-    #             "light.master_fan_level":{"triggers":{"light.master_fan_level":{"type":"fan","bit":16,"onValue":"on"},
-    #                                                 "sensor.master_temperature":{"type":"temperature","bit":4,"onValue":"on"},
-    #                                                 "input_boolean.masterishome":{"type":"tracker","bit":1,"onValue":"on"}},
-    #                                     "type":"fan",
-    #                                     "onState":[4,5,6,7,12,13,14,15,20,21,22,23,28,29,30,31,36,37,38,39,44,45,46,47,52,53,54,55,60,61,62,
-    #                                                63,68,69,70,71,76,77,78,79,84,85,86,87,92,93,94,95,100,101,102,103,108,109,110,111,116,117,118,119,124,125,126,127],
-    #                                     "dimState":[0],
-    #                                     "ignoreState":[0],
-    #                                     "callback":self.light_state_handler,
-    #                                     "overrides":["input_boolean.party_override"]}}
-
-    #################End of values to move to config file or somewhere.
-
     for ent in self.targets:
       for ent_trigger in self.targets[ent]["triggers"]:
         self.log("registering callback for {} on {} for target {}".format(ent_trigger,self.targets[ent]["callback"],ent))
@@ -129,29 +104,76 @@ class master_lights(appapi.my_appapi):
         else:  # if we aren't in ignore state, then it must be off state
           self.log("state = {} turning off light".format(state))
           if target_typ=="light":
-            self.turn_on(target,brightness=self.light_off)
+            self.my_turn_on(target,brightness=self.light_off)
           self.turn_off(target)
       elif state in self.targets[target]["onState"]:    # these states always result in light being turned on.
         if target_typ not in ["light","fan"]:
           self.log("state={} turning on {}".format(state,target))
-          self.turn_on(target)
+          self.my_turn_on(target)
         else:
           if state in self.targets[target]["dimState"]:                      # when turning on lights, media player determines whether to dim or not.
-            self.log("media player involved so dim lights")
-            level=self.light_dim
+            if target_typ=="light":
+              if self.targets[target]["type"]=="fan":
+                self.log("adjusting fan brightness")
+                self.my_turn_on(target,brightness=self.fan_low)
+              else:
+                self.log("dim lights")
+                self.my_turn_on(target,brightness=self.light_dim)
+            elif target_typ=="fan":
+              self.log("adjusting fan speed")
+              self.my_turn_on(target,speed=self.fan_low_speed)
+            else:
+              self.log("unknown type assuming light")
+              self.my_turn_on(target,brightness=self.light_dim)
           else:                                                   # it wasn't a media player dim situation so it's just a simple turn on the light.
             if self.targets[target]["type"]=="fan":
               if target_typ=="fan":
-                self.log("state={} turning on fan {} at speed {}".format(state,target,self.fan_med_speed))
-                self.turn_on(target,speed=self.fan_medium_speed)
+                self.log("state={} turning on fan {} at speed {}".format(state,target,self.fan_high_speed))
+                self.my_turn_on(target,speed=self.fan_high_speed)
               else:
-                self.log("state={} turning on fan {} at brightness {}".format(state,target,self.fan_med))
-                self.turn_on(target,brightness=self.fan_med)
+                self.log("state={} turning on fan {} at brightness {}".format(state,target,self.fan_high))
+                self.my_turn_on(target,brightness=self.fan_high)
             elif self.targets[target]["type"]=="light":
               self.log("state={} turning on light {} at brightness={}".format(state,target,self.light_max))
-              self.turn_on(target,self.light_max)
+              self.my_turn_on(target,brightness=self.light_max)
     else:
       self.log("home override set so no automations performed")
+
+
+  def my_turn_on(self,entity,**kwargs):
+    self.log("entity={} kwargs={}".format(entity,kwargs))
+    if not kwargs==None:
+      current_state=self.get_state(entity,"all")
+      attributes=current_state["attributes"]
+      current_state=current_state["state"]
+
+      self.log("current_state={}, attributes={}".format(current_state,attributes))
+      if "brightness" in kwargs:
+        if "brightness" in attributes:
+          if not attributes["brightness"]==kwargs["brightness"]:
+            self.log("turning on entity {} brightness {}".format(entity,kwargs["brightness"]))
+            self.turn_on(entity,brightness=kwargs["brightness"])
+          else:
+            self.log("brightness unchanged")
+        else:
+          if current_state=="off":
+            self.log("No Brightness assuming light {}")
+            self.turn_on(entity,brightness=kwargs["brightness"])
+      elif "speed" in kwargs:
+        if "speed" in attributes:
+          if not attributes["speed"]==kwargs["speed"]:
+            self.log("turning on entity {} speed {}".format(entity,kwargs["speed"]))
+            self.turn_on(entity,speed=kwargs["speed"])
+          else:
+            self.log("no change in speed")
+        else:
+          self.log("No Speed in attribute assuming fan")
+          self.turn_on(entity,speed=kwargs["speed"])
+      else:
+        self.log("unknown attributes {}".format(kwargs))
+    else:
+      self.log("turning on entity {}".format(entity))
+      self.turn_on(entity)
 
   #############
   #
@@ -202,9 +224,10 @@ class master_lights(appapi.my_appapi):
     state=0
     for trigger in self.targets[target]["triggers"]:      # loop through triggers
       t_dict=self.targets[target]["triggers"][trigger]
-      t_state=self.normalize_state(target,trigger,self.get_state(trigger))
+      t_state=str(self.normalize_state(target,trigger,self.get_state(trigger)))
       self.log("trigger={} onValue={} bit={} currentstate={}".format(trigger,t_dict["onValue"],t_dict["bit"],t_state))
       # or value for this trigger to existing state bits.
       state=state | (t_dict["bit"] if (t_state==t_dict["onValue"]) else 0)
+      self.log("state={}".format(state))
     return state
 
